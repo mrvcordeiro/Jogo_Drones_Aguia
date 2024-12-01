@@ -1,0 +1,632 @@
+<!DOCTYPE html> 
+<html>
+<head>
+    <title>Pesca Submarina</title>
+    <style>
+        /* Estilos permanecem os mesmos, exceto pelo drone inimigo */
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            margin: 0 auto;
+            overflow: hidden;
+            cursor: none;
+        }
+        
+        #background {
+            width: 150%;
+            height: 150%;
+            animation: moveBackground 10s infinite alternate ease-in-out;
+            background-image: url('fundo.jpg');
+            background-size: cover;
+            background-position: center;
+        }
+        
+        #speargun {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            background-image: url('rede.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transform-origin: center;
+        }
+        
+        .spear {
+            position: absolute;
+            width: 20px;
+            height: 4px;
+            background-color: silver;
+            transform-origin: center;
+            border-radius: 2px;
+        }
+        
+        .enemySpear {
+            position: absolute;
+            width: 20px;
+            height: 4px;
+            background-color: yellow; /* Tiro amarelo */
+            transform-origin: center;
+            border-radius: 2px;
+        }
+        
+        .fish {
+            position: absolute;
+            width: 120px;
+            height: 90px;
+            transform: translate(-50%, -50%);
+            background-image: url('peixe.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: transform 0.2s;
+        }
+        
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-size: 24px;
+            color: white;
+            text-shadow: 2px 2px 2px black;
+        }
+        
+        #timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            color: white;
+            text-shadow: 2px 2px 2px black;
+        }
+        
+        #controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            text-shadow: 2px 2px 2px black;
+            font-size: 18px;
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+
+        #gameOverText {
+            font-size: 48px;
+            color: white;
+            text-shadow: 2px 2px 2px black;
+            margin-bottom: 20px;
+        }
+
+        #restartButton {
+            padding: 10px 20px;
+            font-size: 24px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        #restartButton:hover {
+            background-color: #45a049;
+        }
+
+        #audioControls {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+        }
+    @keyframes moveBackground {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(-20px, 10px); }
+            50% { transform: translate(20px, -15px); }
+            75% { transform: translate(-15px, -10px); }
+            100% { transform: translate(15px, 15px); }
+        }
+    #droneEnemy {
+            position: absolute;
+            width: 100px;
+            height: 60px;
+            background-image: url('drone-inimigo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            top: 50px;
+            left: 350px; /* Posição inicial */
+            transform-origin: center;
+            z-index: 2;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="background"></div>
+        <div id="speargun"></div>
+        <div id="score">Pontos: 0</div>
+        <div id="timer">30</div>
+        <div id="droneEnemy"></div>
+        <div id="controls">Q/W - Girar Espingarda</div>
+        <div id="audioControls">
+            <button onclick="toggleMusic()">Music</button>
+        </div>
+        <div id="gameOver">
+            <div id="gameOverText">Fim do Jogo!</div>
+            <button id="restartButton">Jogar Novamente</button>
+        </div>
+    </div>
+
+    <audio id="backgroundMusic" loop>
+        <source src="background-music.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="hitSound">
+        <source src="hit.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="missSound">
+        <source src="miss.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="shootSound">
+        <source src="tiro.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="explosionSound">
+        <source src="explosao.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const speargun = document.getElementById('speargun');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const gameOverElement = document.getElementById('gameOver');
+        const restartButton = document.getElementById('restartButton');
+        const background = document.getElementById('background');
+        const drone = document.getElementById('droneEnemy');
+        
+        const backgroundMusic = document.getElementById('backgroundMusic');
+        const hitSound = document.getElementById('hitSound');
+        const missSound = document.getElementById('missSound');
+        const shootSound = document.getElementById('shootSound');
+        const explosionSound = document.getElementById('explosionSound');
+        
+        let score = 0;
+        let timeLeft = 30;
+        let gameRunning = true;
+        let fishInterval;
+        let timerInterval;
+        let musicPlaying = false;
+        let gunAngle = 0;
+        let keyRotationSpeed = 3;
+        let droneAngle = 0;
+        let droneRotationInterval;
+        let droneShootingInterval;
+        let droneAnimationFrame;
+
+        const keysPressed = new Set();
+        
+        document.addEventListener('keydown', (e) => {
+            keysPressed.add(e.key.toLowerCase());
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keysPressed.delete(e.key.toLowerCase());
+        });
+
+        function toggleMusic() {
+            if (musicPlaying) {
+                backgroundMusic.pause();
+                musicPlaying = false;
+            } else {
+                backgroundMusic.play();
+                musicPlaying = true;
+            }
+        }
+
+        function updateGunRotation() {
+            if (keysPressed.has('q')) {
+                gunAngle -= keyRotationSpeed;
+            }
+            if (keysPressed.has('w')) {
+                gunAngle += keyRotationSpeed;
+            }
+            speargun.style.transform = `translate(-50%, -50%) rotate(${gunAngle}deg)`;
+            
+            if (gameRunning) {
+                requestAnimationFrame(updateGunRotation);
+            }
+        }
+
+        gameContainer.addEventListener('mousemove', (e) => {
+            const rect = gameContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            speargun.style.left = x + 'px';
+            speargun.style.top = y + 'px';
+
+            // Atualizar a posição do fundo com base na posição da espingarda
+            const maxOffsetX = (background.clientWidth - gameContainer.clientWidth) / 2;
+            const maxOffsetY = (background.clientHeight - gameContainer.clientHeight) / 2;
+            const offsetX = ((x / gameContainer.clientWidth) - 0.5) * -2 * maxOffsetX;
+            const offsetY = ((y / gameContainer.clientHeight) - 0.5) * -2 * maxOffsetY;
+            background.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+        });
+
+        gameContainer.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // Apenas dispara se for o botão esquerdo do mouse
+            if (!gameRunning) return;
+            
+            shootSound.currentTime = 0;
+            shootSound.play();
+            
+            createSpear();
+        });
+
+        function createSpear() {
+            if (!gameRunning) return;
+            
+            const spear = document.createElement('div');
+            spear.className = 'spear';
+            const rect = speargun.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            spear.style.left = (centerX - gameContainer.getBoundingClientRect().left) + 'px';
+            spear.style.top = (centerY - gameContainer.getBoundingClientRect().top) + 'px';
+            spear.style.transform = `rotate(${gunAngle}deg)`;
+            
+            gameContainer.appendChild(spear);
+            
+            const speed = 15;
+            const angle = gunAngle * Math.PI / 180;
+            const dx = Math.cos(angle) * speed;
+            const dy = Math.sin(angle) * speed;
+            
+            function moveSpear() {
+                if (!gameRunning) {
+                    spear.remove();
+                    return;
+                }
+                
+                const currentLeft = parseFloat(spear.style.left);
+                const currentTop = parseFloat(spear.style.top);
+                
+                const spearRect = spear.getBoundingClientRect();
+                const fishes = document.querySelectorAll('.fish');
+                
+                // Verificar colisão com peixes
+                for (const fish of fishes) {
+                    const fishRect = fish.getBoundingClientRect();
+                    if (
+                        spearRect.left < fishRect.right &&
+                        spearRect.right > fishRect.left &&
+                        spearRect.top < fishRect.bottom &&
+                        spearRect.bottom > fishRect.top
+                    ) {
+                        score += 10;
+                        scoreElement.textContent = `Pontos: ${score}`;
+                        hitSound.currentTime = 0;
+                        hitSound.play();
+                        const explosion = document.createElement('div');
+                        explosion.style.backgroundImage = "url('explosao.png')";
+                        explosion.style.position = 'absolute';
+                        explosion.style.width = '120px';
+                        explosion.style.height = '120px';
+                        explosion.style.backgroundSize = 'contain';
+                        explosion.style.backgroundRepeat = 'no-repeat';
+                        explosion.style.left = fish.style.left;
+                        explosion.style.top = fish.style.top;
+                        gameContainer.appendChild(explosion);
+                        setTimeout(() => explosion.remove(), 500);
+                        
+                        fish.remove();
+                        spear.remove();
+                        return;
+                    }
+                }
+
+                // Verificar colisão com o drone
+                const droneRect = drone.getBoundingClientRect();
+                if (
+                    spearRect.left < droneRect.right &&
+                    spearRect.right > droneRect.left &&
+                    spearRect.top < droneRect.bottom &&
+                    spearRect.bottom > droneRect.top
+                ) {
+                    // Acertou o drone - pode adicionar pontuação ou efeitos se desejar
+                    spear.remove();
+                    return;
+                }
+                
+                if (currentLeft < 0 || currentLeft > gameContainer.clientWidth ||
+                    currentTop < 0 || currentTop > gameContainer.clientHeight) {
+                    spear.remove();
+                    return;
+                }
+                
+                spear.style.left = (currentLeft + dx) + 'px';
+                spear.style.top = (currentTop + dy) + 'px';
+                
+                requestAnimationFrame(moveSpear);
+            }
+            
+            moveSpear();
+        }
+
+        function createFish() {
+            if (!gameRunning) return;
+            
+            const fish = document.createElement('div');
+            fish.className = 'fish';
+            
+            const spawnInside = Math.random() < 0.7;
+            
+            let x, y;
+            if (spawnInside) {
+                x = Math.random() * (gameContainer.clientWidth - 200) + 100;
+                y = Math.random() * (gameContainer.clientHeight - 200) + 100;
+            } else {
+                if (Math.random() < 0.5) {
+                    x = Math.random() < 0.5 ? -60 : gameContainer.clientWidth + 60;
+                    y = Math.random() * gameContainer.clientHeight;
+                } else {
+                    x = Math.random() * gameContainer.clientWidth;
+                    y = Math.random() < 0.5 ? -45 : gameContainer.clientHeight + 45;
+                }
+            }
+            
+            fish.style.left = x + 'px';
+            fish.style.top = y + 'px';
+            
+            gameContainer.appendChild(fish);
+            
+            let dx = (Math.random() - 0.5) * 6;
+            let dy = (Math.random() - 0.5) * 6;
+            
+            const minSpeed = 2;
+            const speed = Math.sqrt(dx * dx + dy * dy);
+            if (speed < minSpeed) {
+                dx = (dx / speed) * minSpeed;
+                dy = (dy / speed) * minSpeed;
+            }
+            
+            function updateFishRotation() {
+                const angle = Math.atan2(dy, dx);
+                const degrees = Math.max(-45, Math.min(45, angle * (180 / Math.PI)));
+                if (dx < 0) {
+                    fish.style.transform = `translate(-50%, -50%) rotate(${degrees}deg) scaleX(-1)`;
+                } else {
+                    fish.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
+                }
+            }
+            
+            function moveFish() {
+                if (!gameRunning || !fish.parentNode) return;
+                
+                const currentLeft = parseFloat(fish.style.left);
+                const currentTop = parseFloat(fish.style.top);
+                
+                if (Math.random() < 0.02) {
+                    dx += (Math.random() - 0.5) * 2;
+                    dy += (Math.random() - 0.5) * 2;
+                    
+                    const speed = Math.sqrt(dx * dx + dy * dy);
+                    const maxSpeed = 6;
+                    if (speed > maxSpeed) {
+                        dx = (dx / speed) * maxSpeed;
+                        dy = (dy / speed) * maxSpeed;
+                    } else if (speed < minSpeed) {
+                        dx = (dx / speed) * minSpeed;
+                        dy = (dy / speed) * minSpeed;
+                    }
+                    
+                    updateFishRotation();
+                }
+                
+                if (currentLeft < -200 || currentLeft > gameContainer.clientWidth + 200 ||
+                    currentTop < -200 || currentTop > gameContainer.clientHeight + 200) {
+                    if (fish.parentNode === gameContainer) {
+                        fish.remove();
+                    }
+                    return;
+                }
+                
+                fish.style.left = (currentLeft + dx) + 'px';
+                fish.style.top = (currentTop + dy) + 'px';
+                
+                requestAnimationFrame(moveFish);
+            }
+            
+            updateFishRotation();
+            moveFish();
+        }
+        
+        function startGame() {
+            // Redefinir estado do jogo
+            document.querySelectorAll('.fish, .spear, .enemySpear').forEach(el => el.remove());
+            
+            score = 0;
+            timeLeft = 30;
+            gameRunning = true;
+            gunAngle = 0;
+            droneAngle = 0;
+            
+            scoreElement.textContent = 'Pontos: 0';
+            timerElement.textContent = '30';
+            gameOverElement.style.display = 'none';
+
+            // Redefinir posição e rotação do drone
+            drone.style.left = '350px';
+            drone.style.top = '50px';
+            drone.style.transform = 'rotate(0deg)';
+            
+            if (!musicPlaying) {
+                toggleMusic();
+            }
+            
+            fishInterval = setInterval(createFish, 1000);
+            updateGunRotation();
+            moveDrone();
+            rotateDrone();
+            droneShoot();
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerElement.textContent = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(fishInterval);
+            clearInterval(timerInterval);
+            clearInterval(droneRotationInterval);
+            clearInterval(droneShootingInterval);
+            gameOverElement.style.display = 'block';
+        }
+        
+        restartButton.addEventListener('click', startGame);
+
+        function moveDrone() {
+            if (!gameRunning) return;
+            const maxX = gameContainer.clientWidth - drone.clientWidth;
+            const maxY = gameContainer.clientHeight / 2;
+            
+            let targetX = Math.random() * maxX;
+            let targetY = Math.random() * maxY;
+            
+            function updatePosition() {
+                if (!gameRunning) return;
+                const currentX = drone.offsetLeft;
+                const currentY = drone.offsetTop;
+                const speed = 2;
+                
+                const dx = targetX - currentX;
+                const dy = targetY - currentY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < speed) {
+                    targetX = Math.random() * maxX;
+                    targetY = Math.random() * maxY;
+                } else {
+                    const newX = currentX + (dx / distance) * speed;
+                    const newY = currentY + (dy / distance) * speed;
+                    drone.style.left = newX + 'px';
+                    drone.style.top = newY + 'px';
+                }
+                
+                droneAnimationFrame = requestAnimationFrame(updatePosition);
+            }
+            
+            updatePosition();
+        }
+
+        function rotateDrone() {
+            droneRotationInterval = setInterval(() => {
+                if (!gameRunning) return;
+                droneAngle += (Math.random() - 0.5) * 30; // Gira aleatoriamente até +/-15 graus
+                drone.style.transform = `rotate(${droneAngle}deg)`;
+            }, 1000);
+        }
+
+        function droneShoot() {
+            droneShootingInterval = setInterval(() => {
+                if (!gameRunning) return;
+                createEnemySpear();
+            }, 2000); // Drone dispara a cada 2 segundos
+        }
+
+        function createEnemySpear() {
+            if (!gameRunning) return;
+            
+            const spear = document.createElement('div');
+            spear.className = 'enemySpear';
+            const rect = drone.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            spear.style.left = (centerX - gameContainer.getBoundingClientRect().left) + 'px';
+            spear.style.top = (centerY - gameContainer.getBoundingClientRect().top) + 'px';
+            spear.style.transform = `rotate(${droneAngle}deg)`;
+            
+            gameContainer.appendChild(spear);
+            
+            const speed = 5; // Mais lento que o tiro do jogador
+            const angle = droneAngle * Math.PI / 180;
+            const dx = Math.cos(angle) * speed;
+            const dy = Math.sin(angle) * speed;
+            
+            function moveSpear() {
+                if (!gameRunning) {
+                    spear.remove();
+                    return;
+                }
+                
+                const currentLeft = parseFloat(spear.style.left);
+                const currentTop = parseFloat(spear.style.top);
+                
+                const spearRect = spear.getBoundingClientRect();
+                const speargunRect = speargun.getBoundingClientRect();
+                
+                // Verificar colisão com a espingarda
+                if (
+                    spearRect.left < speargunRect.right &&
+                    spearRect.right > speargunRect.left &&
+                    spearRect.top < speargunRect.bottom &&
+                    spearRect.bottom > speargunRect.top
+                ) {
+                    // Exibir explosão
+                    const explosion = document.createElement('div');
+                    explosion.style.backgroundImage = "url('explosao.png')";
+                    explosion.style.position = 'absolute';
+                    explosion.style.width = '120px';
+                    explosion.style.height = '120px';
+                    explosion.style.backgroundSize = 'contain';
+                    explosion.style.backgroundRepeat = 'no-repeat';
+                    explosion.style.left = speargun.style.left;
+                    explosion.style.top = speargun.style.top;
+                    gameContainer.appendChild(explosion);
+                    setTimeout(() => explosion.remove(), 500);
+
+                    // Tocar som de explosão
+                    explosionSound.currentTime = 0;
+                    explosionSound.play();
+
+                    spear.remove();
+                    endGame();
+                    return;
+                }
+                
+                if (currentLeft < 0 || currentLeft > gameContainer.clientWidth ||
+                    currentTop < 0 || currentTop > gameContainer.clientHeight) {
+                    spear.remove();
+                    return;
+                }
+                
+                spear.style.left = (currentLeft + dx) + 'px';
+                spear.style.top = (currentTop + dy) + 'px';
+                
+                requestAnimationFrame(moveSpear);
+            }
+            
+            moveSpear();
+        }
+
+        // Iniciar o jogo
+        startGame();
+    </script>
+</body>
+</html>
